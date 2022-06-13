@@ -1,0 +1,7 @@
+apiVersion: "k8s.networkteam.com/v1"
+kind: MySQL57Database
+metadata:
+  name: test
+spec:
+  serviceName: test-database
+  secretName: test-database

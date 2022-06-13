@@ -1,0 +1,66 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  # name must match the spec fields below, and be in the form: <plural>.<group>
+  name: mysql57databases.k8s.networkteam.com
+spec:
+  # group name to use for REST API: /apis/<group>/<version>
+  group: k8s.networkteam.com
+  names:
+    # plural name to be used in the URL: /apis/<group>/<version>/<plural>
+    plural: mysql57databases
+    # singular name to be used as an alias on the CLI and for display
+    singular: mysql57database
+    # kind is normally the CamelCased singular type. Your resource manifests use this.
+    kind: MySQL57Database
+    # shortNames allow shorter string to match your resource on the CLI
+    shortNames:
+    - mysql57db
+    #  preserveUnknownFields: false
+  # either Namespaced or Cluster
+  scope: Namespaced
+  # list of versions supported by this CustomResourceDefinition
+  versions:
+    - name: v1
+      # Each version can be enabled/disabled by Served flag.
+      served: true
+      # One and only one version must be marked as the storage version.
+      storage: true
+      subresources:
+        # status enables the status subresource.
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                serviceName:
+                  type: string
+                  description: 'Create a Service with this name under which the database is reachable'
+                secretName:
+                  type: string
+                  description: 'Create a Secret with this name that contains the database credentials. The keys are database_name, user and password.'
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                  description: 'Is set to true when the resource is ready'
+                database:
+                  type: string
+                  description: 'Final database name'
+      additionalPrinterColumns:
+        - name: Namespace
+          type: boolean
+          description: Namespace of the resource
+          jsonPath: .metadata.namespace
+        - name: Database Name
+          type: string
+          description: Final database name
+          jsonPath: .status.database
+        - name: Ready
+          type: boolean
+          description: Readiness of the created resource
+          jsonPath: .status.ready

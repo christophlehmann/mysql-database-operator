@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql57-database-operator
+  namespace: ${KUBE_NAMESPACE}
+  labels:
+    app: mysql57-database-operator
+  annotations:
+    keel.sh/policy: minor
+    keel.sh/pollSchedule: '@daily'
+    keel.sh/trigger: poll
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql57-database-operator
+  template:
+    metadata:
+      labels:
+        app: mysql57-database-operator
+    spec:
+      containers:
+        - name: operator
+          image: ${IMAGE}:${IMAGE_TAG}
+          imagePullPolicy: Always
+          env:
+            - name: LOG_NO_TIME
+              value: "true"
+            - name: SERVICE_EXTERNAL_NAME
+              value: '{SERVICE_EXTERNAL_NAME}'
+            - name: MYSQL_HOST
+              value: '{ADMIN_SERVICE_NAME}'
+            - name: MYSQL_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: '{ADMIN_SECRET_NAME}'
+                  key: user
+            - name: MYSQL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: '{ADMIN_SECRET_NAME}'
+                  key: password
