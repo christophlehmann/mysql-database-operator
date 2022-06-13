@@ -1,0 +1,7 @@
+apiVersion: "k8s.christophlehmann.eu/v1"
+kind: MySQL80Database
+metadata:
+  name: test
+spec:
+  serviceName: test-database
+  secretName: test-database
