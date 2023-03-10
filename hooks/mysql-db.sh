@@ -49,6 +49,10 @@ function handle_current_object() {
     local SECRET_NAME=$(jq -r ".spec.secretName" $CURRENT_OBJECT)
     local DATABASE=$(echo "${NAMESPACE}_${NAME}" | sed -e 's/-//g' | cut -c -32)
 
+    local MYSQL_USER=$(kubectl -n $NAMESPACE get secret $SECRET_NAME -o=jsonpath='{.data.user}' | base64 -d 2>/dev/null)
+    local MYSQL_PASSWORD=$(kubectl -n $NAMESPACE get secret $SECRET_NAME -o=jsonpath='{.data.password}' | base64 -d 2>/dev/null)
+    local DATABASE=$(kubectl -n $NAMESPACE get secret $SECRET_NAME -o=jsonpath='{.data.database}' | base64 -d 2>/dev/null)
+
     if common::should_be_deleted $CURRENT_OBJECT
     then
         if ! common::has_finalizer $CURRENT_OBJECT
@@ -56,11 +60,17 @@ function handle_current_object() {
           return
         fi
 
+        common::log $NAMESPACE $NAME "Delete database user"
+        if [ ! -z "$MYSQL_USER" ]
+        then
+            mysql -u ${MYSQL_ADMIN_USER} -p"${MYSQL_ADMIN_PASSWORD}" -h ${MYSQL_HOST} -e "DROP USER IF EXISTS ${MYSQL_USER};"
+        fi
+
         common::log $NAMESPACE $NAME "Delete database"
-        mysql -u ${MYSQL_ADMIN_USER} -p"${MYSQL_ADMIN_PASSWORD}" -h ${MYSQL_HOST} -e "
-            DROP USER IF EXISTS ${DATABASE};
-            DROP DATABASE IF EXISTS ${DATABASE};
-        "
+        if [ ! -z "$DATABASE" ]
+        then
+            mysql -u ${MYSQL_ADMIN_USER} -p"${MYSQL_ADMIN_PASSWORD}" -h ${MYSQL_HOST} -e "DROP DATABASE IF EXISTS ${DATABASE};"
+        fi
 
         common::log $NAMESPACE $NAME "Delete service"
         kubectl -n $NAMESPACE delete service $SERVICE_NAME &>/dev/null
@@ -73,24 +83,30 @@ function handle_current_object() {
         return
     fi
 
-    local MYSQL_USER=$(kubectl -n $NAMESPACE get secret $SECRET_NAME -o=jsonpath='{.data.user}' | base64 -d 2>/dev/null)
-    local MYSQL_PASSWORD=$(kubectl -n $NAMESPACE get secret $SECRET_NAME -o=jsonpath='{.data.password}' | base64 -d 2>/dev/null)
-    if [ -z "$MYSQL_USER" ] || [ -z "$MYSQL_PASSWORD" ]
+    if [ -z "$MYSQL_USER" ] || [ -z "$MYSQL_PASSWORD" ] || [ -z "$DATABASE" ]
     then
-        MYSQL_PASSWORD=$(pwgen -s 32 1)
-        MYSQL_USER=$(echo "${DATABASE}$(pwgen 32 1)" | cut -c -32)
-
         common::log $NAMESPACE $NAME "Create secret"
-        kubectl -n ${NAMESPACE} create secret generic ${SECRET_NAME} \
+        if [ -z "$MYSQL_USER" ]
+        then
+            MYSQL_USER=$(echo "${DATABASE}$(pwgen 32 1)" | cut -c -32)
+        fi
+        if [ -z "$MYSQL_PASSWORD" ]
+        then
+            MYSQL_PASSWORD=$(pwgen -s 32 1)
+        fi
+        if [ -z "$DATABASE" ]
+        then
+            DATABASE=$(echo "${NAMESPACE}_${NAME}" | sed -e 's/-//g' | cut -c -32)
+        fi
+
+        kubectl create secret generic ${SECRET_NAME} \
+            --save-config \
+            --dry-run=client \
             --from-literal="user=${DATABASE}" \
             --from-literal="password=${MYSQL_PASSWORD}" \
-            --from-literal="database=${DATABASE}"
-    fi
-
-    if ! echo $MYSQL_USER | egrep "^$DATABASE" >/dev/null
-    then
-        common::log_error $NAMESPACE $NAME "Username does not match database name"
-        exit 1
+            --from-literal="database=${DATABASE}" \
+            -o yaml \
+            -n ${NAMESPACE} | kubectl apply -f -
     fi
 
     common::log $NAMESPACE $NAME "Sync database"
